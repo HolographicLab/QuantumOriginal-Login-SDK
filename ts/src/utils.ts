@@ -1,5 +1,10 @@
 /**
- * Builds the QHub CAS SSO login URL.
+ * Builds a QuantumOriginal CAS login URL.
+ *
+ * @param authPortalUrl Login portal URL, such as `https://qoriginal.vip/login`.
+ * @param serviceUrl Service callback URL to bind to the login ticket.
+ * @param extraParams Additional login portal query parameters.
+ * @returns The login portal URL with the service and extra parameters.
  */
 export function buildLoginUrl(
   authPortalUrl: string,
@@ -19,7 +24,10 @@ export function buildLoginUrl(
 }
 
 /**
- * Extracts the CAS `ticket` query parameter from the given URL or current window.location.
+ * Extracts the CAS `ticket` query parameter from a URL.
+ *
+ * @param targetUrl URL to inspect. Defaults to the current browser URL.
+ * @returns The ticket value, or `null` when absent or when no valid URL is available.
  */
 export function extractTicketFromUrl(targetUrl?: string): string | null {
   const urlString =
@@ -35,7 +43,10 @@ export function extractTicketFromUrl(targetUrl?: string): string | null {
 }
 
 /**
- * Removes the `ticket` query parameter from a URL string while preserving other parameters.
+ * Removes the `ticket` query parameter while preserving other URL components and parameters.
+ *
+ * @param targetUrl URL to clean. Defaults to the current browser URL.
+ * @returns The URL without its ticket, or the original input when it cannot be parsed.
  */
 export function stripTicketFromUrl(targetUrl?: string): string {
   const urlString =
@@ -52,7 +63,10 @@ export function stripTicketFromUrl(targetUrl?: string): string {
 }
 
 /**
- * Normalizes service URL for comparison and CAS validation.
+ * Removes a CAS ticket from a service URL before validation.
+ *
+ * @param serviceUrl Service callback URL, optionally containing a ticket.
+ * @returns The service URL without the `ticket` query parameter.
  */
 export function normalizeServiceUrl(serviceUrl: string): string {
   return stripTicketFromUrl(serviceUrl);

@@ -4,7 +4,16 @@ import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
+/** Helpers for building CAS login URLs and processing service callbacks. */
 object UrlUtils {
+    /**
+     * Builds a login portal URL with an encoded service callback and optional query parameters.
+     *
+     * @param authPortalUrl Login portal URL, such as `https://qoriginal.vip/login`.
+     * @param serviceUrl Callback URL to bind to the login ticket.
+     * @param extraParams Additional login portal query parameters.
+     * @return The login portal URL.
+     */
     fun buildLoginUrl(
         authPortalUrl: String,
         serviceUrl: String,
@@ -24,6 +33,12 @@ object UrlUtils {
         return sb.toString()
     }
 
+    /**
+     * Extracts the CAS `ticket` query parameter from a callback URL.
+     *
+     * @param urlString Callback URL to inspect.
+     * @return The ticket value, or `null` when no ticket is present or the URL is invalid.
+     */
     fun extractTicket(urlString: String?): String? {
         if (urlString.isNullOrBlank()) return null
         return runCatching {
@@ -36,6 +51,12 @@ object UrlUtils {
         }.getOrNull()
     }
 
+    /**
+     * Removes the CAS `ticket` query parameter from a callback URL.
+     *
+     * @param urlString Callback URL to clean.
+     * @return The URL without its ticket, or the original input when it is invalid.
+     */
     fun stripTicket(urlString: String?): String {
         if (urlString.isNullOrBlank()) return ""
         return runCatching {
@@ -56,6 +77,12 @@ object UrlUtils {
         }.getOrDefault(urlString)
     }
 
+    /**
+     * Removes the ticket and trailing slash before sending the service URL for validation.
+     *
+     * @param serviceUrl Service callback URL, optionally containing a ticket.
+     * @return The normalized service URL.
+     */
     fun normalizeServiceUrl(serviceUrl: String): String {
         return stripTicket(serviceUrl).trimEnd('/')
     }

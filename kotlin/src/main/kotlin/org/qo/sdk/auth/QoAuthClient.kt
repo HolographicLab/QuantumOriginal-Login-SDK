@@ -4,6 +4,12 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+/**
+ * Client for QuantumOriginal CAS sign-in and QAPI3 ticket validation.
+ *
+ * The default token storage is in-memory. Supply a persistent [TokenStorage] implementation
+ * if tokens must survive beyond this client's lifetime.
+ */
 class QoAuthClient(
     val config: QoAuthConfig = QoAuthConfig(),
     val storage: TokenStorage = MemoryTokenStorage(),
@@ -16,11 +22,27 @@ class QoAuthClient(
 
     private val apiBaseUrl = config.apiBaseUrl.trimEnd('/')
 
+    /**
+     * Builds the QuantumOriginal login URL for the configured or supplied callback URL.
+     *
+     * @param serviceUrl Callback URL to associate with the ticket.
+     * @param extraParams Additional login portal query parameters.
+     * @return The URL to which the user should be redirected.
+     * @throws MissingServiceUrlException If no callback URL is supplied or configured.
+     */
     fun getLoginUrl(serviceUrl: String? = null, extraParams: Map<String, String> = emptyMap()): String {
         val targetService = resolveServiceUrl(serviceUrl)
         return UrlUtils.buildLoginUrl(config.authPortalUrl, targetService, extraParams)
     }
 
+    /**
+     * Validates a one-time CAS service ticket with QAPI3 and stores the returned API token.
+     *
+     * @param ticket Ticket received by the service callback.
+     * @param serviceUrl Callback URL bound to the ticket.
+     * @return The authenticated user and account attributes.
+     * @throws QoAuthException If the ticket is empty, invalid, or validation fails.
+     */
     fun validateTicket(ticket: String, serviceUrl: String? = null): QoAuthUser {
         val cleanTicket = ticket.trim()
         if (cleanTicket.isEmpty()) {
@@ -76,8 +98,14 @@ class QoAuthClient(
         return user
     }
 
+    /** Returns the API token saved in [storage], or `null` when none is available. */
     fun getToken(): String? = storage.get("token")
 
+    /**
+     * Saves an API token or removes it when `null` or blank.
+     *
+     * @param token Token to save, or `null` to clear.
+     */
     fun setToken(token: String?) {
         if (token.isNullOrBlank()) {
             storage.remove("token")
@@ -86,10 +114,17 @@ class QoAuthClient(
         }
     }
 
+    /** Clears the locally stored API token. */
     fun logout() {
         setToken(null)
     }
 
+    /**
+     * Builds an authorization header using the supplied token or the stored token.
+     *
+     * @param token Optional token to use instead of the stored token.
+     * @return An authorization header map, or an empty map when no token is available.
+     */
     fun buildAuthenticatedHeaders(token: String? = null): Map<String, String> {
         val activeToken = token ?: getToken() ?: return emptyMap()
         return mapOf("Authorization" to "Bearer $activeToken")

@@ -15,6 +15,9 @@ import {
   stripTicketFromUrl,
 } from './utils.js';
 
+/**
+ * Client for QuantumOriginal CAS sign-in, ticket validation, and authenticated API requests.
+ */
 export class QoAuthClient {
   public readonly apiBaseUrl: string;
   public readonly authPortalUrl: string;
@@ -22,20 +25,30 @@ export class QoAuthClient {
   public readonly storage: TokenStorage;
   private readonly customFetch: typeof fetch;
 
+  /**
+   * Creates a client with the QuantumOriginal API and login portal defaults.
+   *
+   * @param config API endpoints, service callback URL, storage, and optional Fetch implementation.
+   */
   constructor(config: QoAuthConfig = {}) {
     this.apiBaseUrl = (config.apiBaseUrl ?? 'https://api.qoriginal.vip').replace(
       /\/+$/,
       ''
     );
     this.authPortalUrl =
-      config.authPortalUrl ?? 'https://app.qoriginal.vip/login';
+      config.authPortalUrl ?? 'https://qoriginal.vip/login';
     this.defaultServiceUrl = config.serviceUrl;
     this.storage = config.storage ?? createDefaultStorage();
     this.customFetch = config.fetch ?? fetch.bind(globalThis);
   }
 
   /**
-   * Generates the redirect URL to the central QHub login page with the `service` callback parameter.
+   * Builds the QuantumOriginal login URL with the service callback parameter.
+   *
+   * @param serviceUrl Callback URL to associate with the ticket. Defaults to the configured
+   * service URL or, in a browser, the current URL without its ticket.
+   * @param extraParams Additional login portal query parameters.
+   * @returns The URL to which the user should be redirected.
    */
   public getLoginUrl(
     serviceUrl?: string,
@@ -46,7 +59,11 @@ export class QoAuthClient {
   }
 
   /**
-   * Redirects the current browser window to the central login page.
+   * Redirects the current browser window to the QuantumOriginal login portal.
+   *
+   * @param serviceUrl Callback URL to associate with the ticket.
+   * @param extraParams Additional login portal query parameters.
+   * @throws {QoAuthError} If called outside a browser environment.
    */
   public redirectToLogin(
     serviceUrl?: string,
@@ -62,7 +79,12 @@ export class QoAuthClient {
   }
 
   /**
-   * Validates a CAS Service Ticket (`ST-xxxx`) with QAPI3 and returns user identity and API token.
+   * Validates a CAS service ticket with QAPI3 and saves the returned user and token.
+   *
+   * @param ticket One-time ticket received on the service callback.
+   * @param serviceUrl Callback URL bound to the ticket.
+   * @returns The authenticated user and API token.
+   * @throws {QoAuthError} If the ticket is empty or validation fails.
    */
   public async validateTicket(
     ticket: string,
@@ -126,7 +148,10 @@ export class QoAuthClient {
 
   /**
    * Automatically inspects current window URL for a `?ticket=ST-xxxx` parameter,
-   * validates it, strips ticket from the browser address bar, and returns the authenticated user.
+   * validates it, removes the ticket from the address bar, and returns the authenticated user.
+   *
+   * @param options Callback URL override and option to keep the ticket in the address bar.
+   * @returns The authenticated user, or `null` when no ticket is present or when called outside a browser.
    */
   public async handleCallback(options?: {
     serviceUrl?: string;
@@ -148,10 +173,20 @@ export class QoAuthClient {
     return user;
   }
 
+  /**
+   * Reads the API token from the configured storage.
+   *
+   * @returns The saved token, or `null` when no token is stored.
+   */
   public async getToken(): Promise<string | null> {
     return await this.storage.getItem('token');
   }
 
+  /**
+   * Saves an API token or removes it when passed `null`.
+   *
+   * @param token Token to save, or `null` to clear it.
+   */
   public async setToken(token: string | null): Promise<void> {
     if (token) {
       await this.storage.setItem('token', token);
@@ -160,6 +195,11 @@ export class QoAuthClient {
     }
   }
 
+  /**
+   * Reads the saved authenticated user from storage.
+   *
+   * @returns The saved user, or `null` when no valid user is stored.
+   */
   public async getUser(): Promise<QoAuthUser | null> {
     const raw = await this.storage.getItem('user');
     if (!raw) return null;
@@ -170,6 +210,11 @@ export class QoAuthClient {
     }
   }
 
+  /**
+   * Saves an authenticated user or removes it when passed `null`.
+   *
+   * @param user User to save, or `null` to clear it.
+   */
   public async setUser(user: QoAuthUser | null): Promise<void> {
     if (user) {
       await this.storage.setItem('user', JSON.stringify(user));
@@ -178,6 +223,11 @@ export class QoAuthClient {
     }
   }
 
+  /**
+   * Clears the locally stored user and token, then optionally redirects the browser.
+   *
+   * @param redirectUrl Optional URL to open after local credentials are cleared.
+   */
   public async logout(redirectUrl?: string): Promise<void> {
     await this.setToken(null);
     await this.setUser(null);

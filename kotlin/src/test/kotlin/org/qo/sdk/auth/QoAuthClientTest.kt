@@ -5,13 +5,18 @@ import kotlin.test.*
 class QoAuthClientTest {
 
     @Test
+    fun `default config uses QuantumOriginal login portal`() {
+        assertEquals("https://qoriginal.vip/login", QoAuthConfig().authPortalUrl)
+    }
+
+    @Test
     fun `buildLoginUrl produces correct URL with service and query parameters`() {
         val url = UrlUtils.buildLoginUrl(
-            authPortalUrl = "https://app.qoriginal.vip/login",
+            authPortalUrl = "https://qoriginal.vip/login",
             serviceUrl = "https://ai.qoriginal.vip/callback",
             extraParams = mapOf("theme" to "dark")
         )
-        assertTrue(url.startsWith("https://app.qoriginal.vip/login?service="))
+        assertTrue(url.startsWith("https://qoriginal.vip/login?service="))
         assertTrue(url.contains("https%3A%2F%2Fai.qoriginal.vip%2Fcallback"))
         assertTrue(url.contains("theme=dark"))
     }

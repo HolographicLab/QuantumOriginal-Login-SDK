@@ -12,14 +12,24 @@ import {
 
 describe('TypeScript SDK URL Utilities', () => {
   it('buildLoginUrl sets service and extra parameters', () => {
-    const url = buildLoginUrl('https://app.qoriginal.vip/login', 'https://ai.qoriginal.vip/callback', {
+    const url = buildLoginUrl('https://qoriginal.vip/login', 'https://ai.qoriginal.vip/callback', {
       theme: 'dark',
     });
     const parsed = new URL(url);
-    assert.equal(parsed.origin, 'https://app.qoriginal.vip');
+    assert.equal(parsed.origin, 'https://qoriginal.vip');
     assert.equal(parsed.pathname, '/login');
     assert.equal(parsed.searchParams.get('service'), 'https://ai.qoriginal.vip/callback');
     assert.equal(parsed.searchParams.get('theme'), 'dark');
+  });
+
+  it('defaults to the QuantumOriginal login portal', () => {
+    const client = new QoAuthClient({
+      serviceUrl: 'https://ai.qoriginal.vip/callback',
+    });
+    const parsed = new URL(client.getLoginUrl());
+
+    assert.equal(parsed.origin, 'https://qoriginal.vip');
+    assert.equal(parsed.pathname, '/login');
   });
 
   it('extractTicketFromUrl correctly extracts ticket', () => {

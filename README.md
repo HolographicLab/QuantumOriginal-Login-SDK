@@ -1,100 +1,98 @@
 # QuantumOriginal Login SDK
 
-Unified SSO / CAS Authentication Client SDK for the QuantumOriginal ecosystem, providing native implementations for both **TypeScript/JavaScript** and **Kotlin**.
+Unified SSO/CAS authentication clients for the QuantumOriginal ecosystem, with TypeScript/JavaScript and Kotlin implementations.
 
-Centralized Login Portal: `https://app.qoriginal.vip/login`  
-Central Authentication Service API: `https://api.qoriginal.vip/qo/auth`
+| Service | URL |
+| --- | --- |
+| Login portal | `https://qoriginal.vip/login` |
+| QAPI3 base URL | `https://api.qoriginal.vip` |
+| Ticket validation endpoint | `https://api.qoriginal.vip/qo/auth/serviceValidate` |
 
----
+The login portal uses the `qoriginal.vip` domain. The API remains on `api.qoriginal.vip`.
 
-## 📦 Project Layout
+## Features
 
-```
+- Build a CAS login URL with a service callback URL.
+- Validate a one-time service ticket and retrieve the authenticated user and API token.
+- Attach the stored token to TypeScript API requests or build authenticated request headers in Kotlin.
+- Use the TypeScript SDK in browsers or Node.js, and the Kotlin SDK on the JVM.
+
+## Project layout
+
+```text
 quantumoriginal-login-sdk/
-├── ts/                    # TypeScript / JavaScript SDK (Browser & Node.js)
+├── ts/                    # TypeScript / JavaScript SDK
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── src/
-│   │   ├── client.ts      # QoAuthClient core class
-│   │   ├── types.ts       # Types, configurations, and custom errors
-│   │   ├── storage.ts     # LocalStorage & Memory token storage
-│   │   ├── utils.ts       # URL building, ticket extraction & stripping
-│   │   └── index.ts       # Public exports
 │   └── test/
-└── kotlin/                # Kotlin SDK (JVM, CLI, Minecraft Plugins, etc.)
+└── kotlin/                # Kotlin/JVM SDK
     ├── build.gradle.kts
-    ├── settings.gradle.kts
     └── src/
         ├── main/kotlin/org/qo/sdk/auth/
-        │   ├── Models.kt          # User DTOs, configs, exceptions
-        │   ├── QoAuthClient.kt    # Main client
-        │   ├── TokenStorage.kt    # In-memory storage abstraction
-        │   ├── UrlUtils.kt        # URL helpers
-        │   └── HttpTransport.kt   # Zero-dependency HTTP transport
         └── test/kotlin/org/qo/sdk/auth/
 ```
 
----
+## TypeScript / JavaScript
 
-## 🚀 TypeScript SDK Usage
+The TypeScript SDK has no runtime dependencies and uses the Fetch API. It supports browsers and Node.js 18 or later.
 
-Zero runtime dependencies. Compatible with Browser (Vue, React, Svelte, Wasm), Node.js 18+, Bun, and Cloudflare Workers.
-
-### 1. Installation
+### Install
 
 ```bash
 npm install @quantumoriginal/login-sdk
 ```
 
-### 2. Browser / Single-Page Application (SPA)
+### Browser login flow
+
+Configure the service callback URL used by your application. On the callback route, `handleCallback()` validates a `ticket` query parameter and stores the returned user and token. If no ticket is present and there is no saved token, redirect the browser to the login portal.
 
 ```typescript
 import { QoAuthClient } from '@quantumoriginal/login-sdk';
 
 const auth = new QoAuthClient({
   apiBaseUrl: 'https://api.qoriginal.vip',
-  authPortalUrl: 'https://app.qoriginal.vip/login',
-  serviceUrl: 'https://ai.qoriginal.vip/callback', // Your callback URL
+  authPortalUrl: 'https://qoriginal.vip/login',
+  serviceUrl: 'https://ai.example.com/auth/callback',
 });
 
-// Case A: On App Mount / Callback Route
-async function checkAuth() {
-  // If the URL contains ?ticket=ST-xxxx, validates and strips ticket from URL
+async function initializeAuth() {
   const user = await auth.handleCallback();
   if (user) {
-    console.log(`Logged in as ${user.user} (UID: ${user.uid})`);
-    return;
+    console.log(`Logged in as ${user.user}`);
+    return user;
   }
 
-  // Check if already authenticated locally
-  const token = await auth.getToken();
-  if (!token) {
-    // Redirect to central QHub login
+  if (!(await auth.getToken())) {
     auth.redirectToLogin();
   }
-}
 
-// Case B: Authenticated API Requests
-async function fetchProtectedData() {
-  // Automatically attaches 'Authorization: Bearer <token>'
-  const response = await auth.authenticatedFetch('https://api.qoriginal.vip/qo/authorization/account');
-  const accountInfo = await response.json();
-  return accountInfo;
-}
-
-// Case C: Logout
-async function onLogout() {
-  await auth.logout('https://ai.qoriginal.vip');
+  return null;
 }
 ```
 
----
+`getLoginUrl()` returns the login URL without navigating, which is useful when the application manages navigation itself. In non-browser environments, provide `serviceUrl` in the configuration or pass it to `getLoginUrl()` / `validateTicket()`.
 
-## ☕ Kotlin SDK Usage
+### Authenticated requests and logout
 
-Zero 3rd-party HTTP client dependencies (uses built-in `java.net.http.HttpClient` with pluggable `HttpTransport` interface).
+`authenticatedFetch()` adds the stored token to the request unless the request already has an `Authorization` header. `logout()` clears the SDK's locally stored user and token; it does not invalidate a session at the login portal.
 
-### 1. Gradle Setup
+```typescript
+const response = await auth.authenticatedFetch(
+  'https://api.qoriginal.vip/qo/authorization/account'
+);
+const account = await response.json();
+
+await auth.logout();
+```
+
+By default, tokens and user data use `localStorage` when it is available and in-memory storage otherwise. Supply a `TokenStorage` implementation through `storage` to change this behavior.
+
+## Kotlin/JVM
+
+The Kotlin SDK uses the JDK HTTP client and supports a pluggable `HttpTransport`. The Gradle build targets JDK 21.
+
+### Gradle dependencies
 
 ```kotlin
 dependencies {
@@ -103,7 +101,9 @@ dependencies {
 }
 ```
 
-### 2. Service-side or Desktop Client
+### Create a login URL and validate a ticket
+
+The Kotlin SDK returns the login URL but does not open a browser or host the callback endpoint. The integrating application is responsible for redirecting the user and extracting the `ticket` from its callback request.
 
 ```kotlin
 import org.qo.sdk.auth.QoAuthClient
@@ -112,35 +112,29 @@ import org.qo.sdk.auth.QoAuthConfig
 val client = QoAuthClient(
     config = QoAuthConfig(
         apiBaseUrl = "https://api.qoriginal.vip",
-        authPortalUrl = "https://app.qoriginal.vip/login",
-        defaultServiceUrl = "https://kotshi.qoriginal.vip/callback"
+        authPortalUrl = "https://qoriginal.vip/login",
+        defaultServiceUrl = "https://kotshi.example.com/auth/callback"
     )
 )
 
-// 1. Get redirect URL to QHub SSO
+// Redirect the user to this URL using your application or web framework.
 val loginUrl = client.getLoginUrl()
 
-// 2. Validate Service Ticket (ST-xxxx) received from callback
+// After the callback, validate the ticket received by your application.
 val user = client.validateTicket("ST-example-ticket-xxxx")
-println("Authenticated user: ${user.user}, UID: ${user.uid}, Token: ${user.token}")
+println("Authenticated user: ${user.user}, UID: ${user.uid}")
 
-// 3. Make authenticated requests
-val headers = client.buildAuthenticatedHeaders() // {"Authorization": "Bearer ..."}
+val headers = client.buildAuthenticatedHeaders()
 ```
 
----
+The default Kotlin token storage is in-memory. Provide your own `TokenStorage` implementation when tokens need to persist beyond the lifetime of the client.
 
-## 🔒 Security & Design Principles
+## Service tickets and errors
 
-1. **Service Ticket One-Time Consumption**: Tickets (`ST-xxxx`) are generated by QAPI3 and immediately destroyed upon first verification (`GETDEL` in Redis).
-2. **Anti-Phishing Service Whitelist**: Tickets are strictly bound to the requested `service` URL. Mismatched service URLs will be rejected by QAPI3.
-3. **Clean Architecture**:
-   - Zero SQL in SDK layer.
-   - All files strictly under 500 lines.
-   - Comprehensive test suites included for both Kotlin and TypeScript.
+- A service ticket is one-time and bound to the requested `service` callback URL. Use the same callback URL when creating the login URL and validating the ticket.
+- TypeScript exposes `TicketInvalidError`, `AccountFrozenError`, and the base `QoAuthError`. Kotlin exposes corresponding exception types.
+- Handle ticket-validation failures in the application and avoid logging tickets or access tokens.
 
----
-
-## 📄 License
+## License
 
 MIT © 2026 Quantum Original
