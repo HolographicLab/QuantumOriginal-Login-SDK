@@ -1,0 +1,25 @@
+{
+  "name": "@quantumoriginal/login-sdk",
+  "version": "1.0.0",
+  "description": "QuantumOriginal SSO and CAS login SDK for TypeScript and JavaScript",
+  "type": "module",
+  "main": "./ts/dist/src/index.js",
+  "types": "./ts/dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./ts/dist/src/index.d.ts",
+      "import": "./ts/dist/src/index.js"
+    }
+  },
+  "files": ["ts/dist/src", "ts/src", "README.md"],
+  "scripts": {
+    "build": "tsc -p ts/tsconfig.build.json",
+    "prepare": "npm run build",
+    "test": "tsc -p ts/tsconfig.json && node --test ts/dist/test/client.test.js"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0"
+  }
+}

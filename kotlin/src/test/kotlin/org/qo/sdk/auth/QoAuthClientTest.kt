@@ -41,6 +41,7 @@ class QoAuthClientTest {
                 "user": "Glowingstone",
                 "uid": 1294915648,
                 "token": "token-test-64",
+                "clientId": "qmod",
                 "accountType": "qo",
                 "attributes": {
                     "score": 10,
@@ -53,11 +54,15 @@ class QoAuthClientTest {
             assertEquals("https://api.qoriginal.vip/qo/auth/serviceValidate", url)
             assertTrue(body.contains("ST-valid"))
             assertTrue(body.contains("https://ai.qoriginal.vip/callback"))
+            assertTrue(body.contains("\"clientId\":\"qmod\""))
             HttpTransportResponse(200, mockResponse)
         }
 
         val client = QoAuthClient(
-            config = QoAuthConfig(defaultServiceUrl = "https://ai.qoriginal.vip/callback"),
+            config = QoAuthConfig(
+                defaultServiceUrl = "https://ai.qoriginal.vip/callback",
+                clientId = "qmod",
+            ),
             transport = mockTransport
         )
 
@@ -65,6 +70,7 @@ class QoAuthClientTest {
         assertEquals("Glowingstone", user.user)
         assertEquals(1294915648L, user.uid)
         assertEquals("token-test-64", user.token)
+        assertEquals("qmod", user.clientId)
         assertEquals("qo", user.accountType)
         assertEquals(10, user.score)
         assertFalse(user.frozen)
@@ -122,5 +128,68 @@ class QoAuthClientTest {
             client.validateTicket("ST-frozen")
         }
         assertEquals("ACCOUNT_FROZEN", ex.code)
+    }
+
+    @Test
+    fun `refreshSession updates the saved account and token source`() {
+        val responseBody = """
+            {
+                "success": true,
+                "user": "Glowingstone",
+                "uid": 1294915648,
+                "token": "refreshed-token",
+                "clientId": "qmod",
+                "accountType": "qo",
+                "attributes": {
+                    "score": 10,
+                    "frozen": false
+                }
+            }
+        """.trimIndent()
+        val mockTransport = HttpTransport { url, headers, body ->
+            assertEquals("https://api.qoriginal.vip/qo/auth/session/refresh", url)
+            assertEquals("old-token", headers["Authorization"])
+            assertEquals("{}", body)
+            HttpTransportResponse(200, responseBody)
+        }
+        val client = QoAuthClient(
+            storage = MemoryTokenStorage(),
+            transport = mockTransport,
+        )
+        client.setToken("old-token")
+
+        val user = client.refreshSession()
+
+        assertEquals("Glowingstone", user.user)
+        assertEquals("refreshed-token", user.token)
+        assertEquals("qmod", user.clientId)
+        assertEquals("refreshed-token", client.getToken())
+    }
+
+    @Test
+    fun `refresh failures preserve credentials and distinguish temporary errors`() {
+        for ((status, code) in listOf(401 to "INVALID_TOKEN", 403 to "ACCOUNT_FROZEN", 503 to "REFRESH_FAILED")) {
+            val client = QoAuthClient(
+                storage = MemoryTokenStorage(),
+                transport = HttpTransport { _, _, _ -> HttpTransportResponse(status, "{\"success\":false}") },
+            )
+            client.setToken("old-token")
+            val error = assertFailsWith<QoAuthException> { client.refreshSession() }
+            assertEquals(code, error.code)
+            assertEquals("old-token", client.getToken())
+        }
+    }
+
+    @Test
+    fun `refresh rejects missing sessions and incomplete account data`() {
+        val client = QoAuthClient(
+            storage = MemoryTokenStorage(),
+            transport = HttpTransport { _, _, _ -> HttpTransportResponse(200, "{\"success\":true}") },
+        )
+        assertFailsWith<SessionInvalidException> { client.refreshSession() }
+        client.setToken("old-token")
+        val error = assertFailsWith<QoAuthException> { client.refreshSession() }
+        assertEquals("INVALID_RESPONSE", error.code)
+        assertEquals("old-token", client.getToken())
     }
 }

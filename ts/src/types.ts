@@ -17,6 +17,11 @@ export interface QoAuthConfig {
   serviceUrl?: string;
 
   /**
+   * Client application identifier sent to QAPI3. Defaults to `game`.
+   */
+  clientId?: LoginClientId;
+
+  /**
    * Custom token storage implementation.
    * Defaults to `LocalStorageTokenStorage` when `localStorage` is available, otherwise
    * `MemoryTokenStorage`.
@@ -29,6 +34,9 @@ export interface QoAuthConfig {
   fetch?: typeof fetch;
 }
 
+/** Supported QAPI3 login source identifiers. */
+export type LoginClientId = 'game' | 'qcommunity' | 'qmod';
+
 /** Authenticated QuantumOriginal user returned after successful ticket validation. */
 export interface QoAuthUser {
   /** Account name. */
@@ -37,6 +45,8 @@ export interface QoAuthUser {
   uid?: number;
   /** API token used for authenticated requests. */
   token: string;
+  /** Client application associated with this token. */
+  clientId: LoginClientId;
   /** QuantumOriginal account category. */
   accountType: 'qo' | 'guest';
   /** Additional account attributes returned by QAPI3. */
@@ -52,6 +62,7 @@ export interface ServiceValidateSuccessResponse {
   user: string;
   uid?: number;
   token: string;
+  clientId?: LoginClientId;
   accountType: 'qo' | 'guest';
   attributes: {
     score: number;

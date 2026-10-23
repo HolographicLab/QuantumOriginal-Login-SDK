@@ -7,6 +7,7 @@ export {
 export type {
   QoAuthConfig,
   QoAuthUser,
+  LoginClientId,
   ServiceValidateResponse,
   ServiceValidateSuccessResponse,
   ServiceValidateErrorResponse,

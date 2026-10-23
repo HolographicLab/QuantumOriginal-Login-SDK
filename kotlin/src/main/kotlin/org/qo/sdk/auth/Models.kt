@@ -8,11 +8,13 @@ import kotlinx.serialization.Serializable
  * @property apiBaseUrl QAPI3 base URL. Defaults to `https://api.qoriginal.vip`.
  * @property authPortalUrl QuantumOriginal CAS login portal URL. Defaults to `https://qoriginal.vip/login`.
  * @property defaultServiceUrl Callback URL associated with login tickets.
+ * @property clientId Client application identifier sent to QAPI3.
  */
 data class QoAuthConfig(
     val apiBaseUrl: String = "https://api.qoriginal.vip",
     val authPortalUrl: String = "https://qoriginal.vip/login",
     val defaultServiceUrl: String? = null,
+    val clientId: String = "game",
 )
 
 /**
@@ -24,6 +26,7 @@ data class QoAuthConfig(
  * @property accountType QuantumOriginal account category.
  * @property score Account score.
  * @property frozen Whether the account is frozen.
+ * @property clientId Client application identifier associated with the token.
  */
 data class QoAuthUser(
     val user: String,
@@ -32,6 +35,7 @@ data class QoAuthUser(
     val accountType: String,
     val score: Int,
     val frozen: Boolean,
+    val clientId: String = "game",
 )
 
 @Serializable
@@ -46,6 +50,7 @@ internal data class ServiceValidateResponseBody(
     val user: String? = null,
     val uid: Long? = null,
     val token: String? = null,
+    val clientId: String? = null,
     val accountType: String? = null,
     val attributes: ServiceValidateAttributes? = null,
     val code: String? = null,
@@ -74,6 +79,11 @@ class TicketInvalidException(
 class AccountFrozenException(
     message: String = "This QuantumOriginal account has been frozen."
 ) : QoAuthException(message, "ACCOUNT_FROZEN", 403)
+
+/** Thrown when a stored API session is missing, expired, or otherwise invalid. */
+class SessionInvalidException(
+    message: String = "The saved QO session is invalid or expired."
+) : QoAuthException(message, "INVALID_TOKEN", 401)
 
 /** Thrown when no service callback URL is supplied or configured. */
 class MissingServiceUrlException(

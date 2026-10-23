@@ -1,6 +1,7 @@
 import { createDefaultStorage } from './storage.js';
 import {
   AccountFrozenError,
+  LoginClientId,
   QoAuthConfig,
   QoAuthError,
   QoAuthUser,
@@ -22,6 +23,7 @@ export class QoAuthClient {
   public readonly apiBaseUrl: string;
   public readonly authPortalUrl: string;
   public readonly defaultServiceUrl?: string;
+  public readonly clientId: LoginClientId;
   public readonly storage: TokenStorage;
   private readonly customFetch: typeof fetch;
 
@@ -38,6 +40,7 @@ export class QoAuthClient {
     this.authPortalUrl =
       config.authPortalUrl ?? 'https://qoriginal.vip/login';
     this.defaultServiceUrl = config.serviceUrl;
+    this.clientId = config.clientId ?? 'game';
     this.storage = config.storage ?? createDefaultStorage();
     this.customFetch = config.fetch ?? fetch.bind(globalThis);
   }
@@ -106,6 +109,7 @@ export class QoAuthClient {
       body: JSON.stringify({
         ticket: cleanTicket,
         service: targetService,
+        clientId: this.clientId,
       }),
     });
 
@@ -133,6 +137,7 @@ export class QoAuthClient {
       user: data.user,
       uid: data.uid,
       token: data.token,
+      clientId: data.clientId ?? this.clientId,
       accountType: data.accountType,
       attributes: {
         score: data.attributes.score,
@@ -143,6 +148,67 @@ export class QoAuthClient {
     await this.setToken(user.token);
     await this.setUser(user);
 
+    return user;
+  }
+
+  /**
+   * Refreshes the saved API session with QAPI3 and updates the stored user and token.
+   *
+   * @returns The refreshed authenticated user.
+   * @throws {QoAuthError} If the saved token is missing, expired, or rejected.
+   */
+  public async refreshSession(): Promise<QoAuthUser> {
+    const token = await this.getToken();
+    if (!token?.trim()) {
+      throw new QoAuthError('No saved QO session is available.', 'INVALID_TOKEN', 401);
+    }
+
+    const response = await this.customFetch(
+      `${this.apiBaseUrl}/qo/auth/session/refresh`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: token,
+        },
+        body: '{}',
+      }
+    );
+    const data = (await response.json()) as ServiceValidateResponse;
+
+    if (!response.ok || !data.success) {
+      if (response.status === 403 || (data as any)?.code === 'ACCOUNT_FROZEN') {
+        throw new AccountFrozenError(
+          (data as any)?.message ?? 'This account is frozen.'
+        );
+      }
+      throw new QoAuthError(
+        (data as any)?.message ?? 'The saved QO session is invalid or expired.',
+        (data as any)?.code ?? (response.status === 401 ? 'INVALID_TOKEN' : 'REFRESH_FAILED'),
+        response.status
+      );
+    }
+
+    if (typeof data.user !== 'string' || !data.user.trim() ||
+        typeof data.token !== 'string' || !data.token.trim() ||
+        !data.attributes || typeof data.attributes.score !== 'number' ||
+        typeof data.attributes.frozen !== 'boolean') {
+      throw new QoAuthError('QAPI returned incomplete account data.', 'INVALID_RESPONSE', 502);
+    }
+
+    const user: QoAuthUser = {
+      user: data.user,
+      uid: data.uid,
+      token: data.token,
+      clientId: data.clientId ?? this.clientId,
+      accountType: data.accountType,
+      attributes: {
+        score: data.attributes.score,
+        frozen: data.attributes.frozen,
+      },
+    };
+    await this.setToken(user.token);
+    await this.setUser(user);
     return user;
   }
 

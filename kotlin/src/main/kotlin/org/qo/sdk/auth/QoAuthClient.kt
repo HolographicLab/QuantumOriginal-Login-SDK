@@ -55,6 +55,7 @@ class QoAuthClient(
         val requestBody = buildJsonObject {
             put("ticket", cleanTicket)
             put("service", targetService)
+            put("clientId", config.clientId)
         }.toString()
 
         val response = transport.postJson(endpoint, emptyMap(), requestBody)
@@ -89,10 +90,68 @@ class QoAuthClient(
             user = parsed.user ?: "",
             uid = parsed.uid,
             token = parsed.token ?: "",
+            clientId = parsed.clientId ?: config.clientId,
             accountType = parsed.accountType ?: "qo",
             score = parsed.attributes?.score ?: 0,
             frozen = parsed.attributes?.frozen ?: false
         )
+
+        setToken(user.token)
+        return user
+    }
+
+    /**
+     * Refreshes the saved API session with QAPI3 and stores the returned account details.
+     *
+     * @return The refreshed account and token.
+     * @throws SessionInvalidException If no valid saved token is available.
+     * @throws AccountFrozenException If the account has been frozen.
+     */
+    fun refreshSession(): QoAuthUser {
+        val activeToken = getToken()?.takeIf { it.isNotBlank() } ?: throw SessionInvalidException()
+        val response = transport.postJson(
+            "$apiBaseUrl/qo/auth/session/refresh",
+            mapOf("Authorization" to activeToken),
+            "{}",
+        )
+        val parsed = runCatching {
+            json.decodeFromString<ServiceValidateResponseBody>(response.body)
+        }.getOrElse { error ->
+            throw QoAuthException(
+                "Failed to parse refresh response: ${error.message}",
+                "PARSE_ERROR",
+                response.statusCode,
+                error,
+            )
+        }
+
+        if (response.statusCode != 200 || !parsed.success) {
+            when {
+                response.statusCode == 403 || parsed.code == "ACCOUNT_FROZEN" ->
+                    throw AccountFrozenException(parsed.message ?: "Account is frozen")
+                response.statusCode == 401 || parsed.code == "INVALID_TOKEN" ->
+                    throw SessionInvalidException(parsed.message ?: "The saved QO session is invalid or expired")
+                else ->
+                    throw QoAuthException(
+                        parsed.message ?: "Session refresh failed",
+                        parsed.code ?: "REFRESH_FAILED",
+                        response.statusCode,
+                    )
+            }
+        }
+
+        val user = QoAuthUser(
+            user = parsed.user ?: "",
+            uid = parsed.uid,
+            token = parsed.token ?: activeToken,
+            accountType = parsed.accountType ?: "qo",
+            score = parsed.attributes?.score ?: 0,
+            frozen = parsed.attributes?.frozen ?: false,
+            clientId = parsed.clientId ?: config.clientId,
+        )
+        if (user.user.isBlank() || user.token.isBlank()) {
+            throw QoAuthException("QAPI returned incomplete account data", "INVALID_RESPONSE", 502)
+        }
 
         setToken(user.token)
         return user

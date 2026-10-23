@@ -14,6 +14,8 @@ The login portal uses the `qoriginal.vip` domain. The API remains on `api.qorigi
 
 - Build a CAS login URL with a service callback URL.
 - Validate a one-time service ticket and retrieve the authenticated user and API token.
+- Refresh a saved API session with QAPI3 and renew its seven-day validity.
+- Tag issued tokens with a client identifier (`game`, `qcommunity`, or `qmod`).
 - Attach the stored token to TypeScript API requests or build authenticated request headers in Kotlin.
 - Use the TypeScript SDK in browsers or Node.js, and the Kotlin SDK on the JVM.
 
@@ -43,6 +45,10 @@ The TypeScript SDK has no runtime dependencies and uses the Fetch API. It suppor
 npm install @quantumoriginal/login-sdk
 ```
 
+To install directly from this repository, pin a commit with
+`npm install 'git+https://github.com/HolographicLab/QuantumOriginal-Login-SDK.git#<commit>'`.
+The root package builds the TypeScript client during npm's `prepare` step, so no sibling checkout or prebuilt `dist` directory is required.
+
 ### Browser login flow
 
 Configure the service callback URL used by your application. On the callback route, `handleCallback()` validates a `ticket` query parameter and stores the returned user and token. If no ticket is present and there is no saved token, redirect the browser to the login portal.
@@ -54,6 +60,7 @@ const auth = new QoAuthClient({
   apiBaseUrl: 'https://api.qoriginal.vip',
   authPortalUrl: 'https://qoriginal.vip/login',
   serviceUrl: 'https://ai.example.com/auth/callback',
+  clientId: 'qmod',
 });
 
 async function initializeAuth() {
@@ -82,6 +89,9 @@ const response = await auth.authenticatedFetch(
   'https://api.qoriginal.vip/qo/authorization/account'
 );
 const account = await response.json();
+
+// On application startup, verify and extend the saved API session.
+const refreshedUser = await auth.refreshSession();
 
 await auth.logout();
 ```
@@ -113,7 +123,8 @@ val client = QoAuthClient(
     config = QoAuthConfig(
         apiBaseUrl = "https://api.qoriginal.vip",
         authPortalUrl = "https://qoriginal.vip/login",
-        defaultServiceUrl = "https://kotshi.example.com/auth/callback"
+        defaultServiceUrl = "https://kotshi.example.com/auth/callback",
+        clientId = "qmod"
     )
 )
 
@@ -124,6 +135,9 @@ val loginUrl = client.getLoginUrl()
 val user = client.validateTicket("ST-example-ticket-xxxx")
 println("Authenticated user: ${user.user}, UID: ${user.uid}")
 
+// On application startup, verify the saved token and extend its validity.
+val refreshedUser = client.refreshSession()
+
 val headers = client.buildAuthenticatedHeaders()
 ```
 
@@ -132,6 +146,7 @@ The default Kotlin token storage is in-memory. Provide your own `TokenStorage` i
 ## Service tickets and errors
 
 - A service ticket is one-time and bound to the requested `service` callback URL. Use the same callback URL when creating the login URL and validating the ticket.
+- `clientId` identifies the token's login source. It defaults to `game` for compatibility; set it to `qcommunity` or `qmod` for those clients.
 - TypeScript exposes `TicketInvalidError`, `AccountFrozenError`, and the base `QoAuthError`. Kotlin exposes corresponding exception types.
 - Handle ticket-validation failures in the application and avoid logging tickets or access tokens.
 

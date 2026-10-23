@@ -8,6 +8,7 @@ import {
   MemoryTokenStorage,
   TicketInvalidError,
   AccountFrozenError,
+  QoAuthError,
 } from '../src/index.js';
 
 describe('TypeScript SDK URL Utilities', () => {
@@ -57,6 +58,7 @@ describe('QoAuthClient Token & Validation Flow', () => {
       const body = JSON.parse(String(init?.body));
       assert.equal(body.ticket, 'ST-valid-ticket');
       assert.equal(body.service, 'https://ai.qoriginal.vip/callback');
+      assert.equal(body.clientId, 'qmod');
 
       return new Response(
         JSON.stringify({
@@ -64,6 +66,7 @@ describe('QoAuthClient Token & Validation Flow', () => {
           user: 'Glowingstone',
           uid: 1294915648,
           token: 'token-service-xyz',
+          clientId: 'qmod',
           accountType: 'qo',
           attributes: { score: 10, frozen: false },
         }),
@@ -75,12 +78,14 @@ describe('QoAuthClient Token & Validation Flow', () => {
       storage,
       fetch: mockFetch,
       serviceUrl: 'https://ai.qoriginal.vip/callback',
+      clientId: 'qmod',
     });
 
     const user = await client.validateTicket('ST-valid-ticket');
     assert.equal(user.user, 'Glowingstone');
     assert.equal(user.uid, 1294915648);
     assert.equal(user.token, 'token-service-xyz');
+    assert.equal(user.clientId, 'qmod');
     assert.equal(user.accountType, 'qo');
     assert.equal(user.attributes.score, 10);
 
@@ -151,6 +156,35 @@ describe('QoAuthClient Token & Validation Flow', () => {
     );
   });
 
+  it('refreshes a saved session and preserves the server client identifier', async () => {
+    const storage = new MemoryTokenStorage();
+    await storage.setItem('token', 'old-token');
+    const mockFetch: typeof fetch = async (input, init) => {
+      assert.equal(String(input), 'https://api.qoriginal.vip/qo/auth/session/refresh');
+      assert.equal(init?.method, 'POST');
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'old-token');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          user: 'Glowingstone',
+          uid: 1294915648,
+          token: 'refreshed-token',
+          clientId: 'qcommunity',
+          accountType: 'qo',
+          attributes: { score: 10, frozen: false },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+    const client = new QoAuthClient({ storage, fetch: mockFetch });
+
+    const user = await client.refreshSession();
+
+    assert.equal(user.token, 'refreshed-token');
+    assert.equal(user.clientId, 'qcommunity');
+    assert.equal(await client.getToken(), 'refreshed-token');
+  });
+
   it('authenticatedFetch attaches Authorization header', async () => {
     const storage = new MemoryTokenStorage();
     storage.setItem('token', 'my-auth-token');
@@ -169,5 +203,56 @@ describe('QoAuthClient Token & Validation Flow', () => {
 
     await client.authenticatedFetch('https://api.qoriginal.vip/qo/authorization/account');
     assert.equal(receivedAuthHeader, 'Bearer my-auth-token');
+  });
+
+  it('keeps stored credentials when refresh fails temporarily or returns incomplete data', async () => {
+    for (const [status, responseBody, expectedCode] of [
+      [503, { success: false }, 'REFRESH_FAILED'],
+      [200, { success: true, user: 'Glowingstone', attributes: { score: 10, frozen: false } }, 'INVALID_RESPONSE'],
+      [200, { success: true, user: '', token: 'new-token', attributes: { score: 10, frozen: false } }, 'INVALID_RESPONSE'],
+    ] as const) {
+      const storage = new MemoryTokenStorage();
+      storage.setItem('token', 'old-token');
+      storage.setItem('user', 'saved-user');
+      const client = new QoAuthClient({
+        storage,
+        fetch: async () => new Response(JSON.stringify(responseBody), { status }),
+      });
+      await assert.rejects(client.refreshSession(), (error: unknown) => {
+        assert.ok(error instanceof QoAuthError);
+        assert.equal(error.code, expectedCode);
+        return true;
+      });
+      assert.equal(await client.getToken(), 'old-token');
+      assert.equal(storage.getItem('user'), 'saved-user');
+    }
+  });
+
+  it('reports rejected and frozen sessions with actionable codes', async () => {
+    for (const [status, code] of [[401, 'INVALID_TOKEN'], [403, 'ACCOUNT_FROZEN']] as const) {
+      const storage = new MemoryTokenStorage();
+      storage.setItem('token', 'old-token');
+      const client = new QoAuthClient({
+        storage,
+        fetch: async () => new Response(JSON.stringify({ success: false, code }), { status }),
+      });
+      await assert.rejects(client.refreshSession(), (error: unknown) => {
+        assert.ok(error instanceof QoAuthError);
+        assert.equal(error.code, code);
+        return true;
+      });
+    }
+  });
+
+  it('rejects missing sessions before sending a refresh request', async () => {
+    const client = new QoAuthClient({
+      storage: new MemoryTokenStorage(),
+      fetch: async () => { throw new Error('Unexpected request'); },
+    });
+    await assert.rejects(client.refreshSession(), (error: unknown) => {
+      assert.ok(error instanceof QoAuthError);
+      assert.equal(error.code, 'INVALID_TOKEN');
+      return true;
+    });
   });
 });
