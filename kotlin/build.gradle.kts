@@ -22,3 +22,9 @@ kotlin {
 tasks.test {
     useJUnitPlatform()
 }
+
+tasks.withType<org.gradle.jvm.tasks.Jar>().configureEach {
+    from(listOf(rootProject.file("../LICENSE"), rootProject.file("../COPYING"))) {
+        into("META-INF/licenses/quantumoriginal-login-sdk")
+    }
+}

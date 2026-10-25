@@ -11,13 +11,13 @@
       "import": "./ts/dist/src/index.js"
     }
   },
-  "files": ["ts/dist/src", "ts/src", "README.md"],
+  "files": ["ts/dist/src", "ts/src", "README.md", "LICENSE", "COPYING"],
   "scripts": {
     "build": "tsc -p ts/tsconfig.build.json",
     "prepare": "npm run build",
     "test": "tsc -p ts/tsconfig.json && node --test ts/dist/test/client.test.js"
   },
-  "license": "MIT",
+  "license": "LGPL-3.0-only",
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.4.0"
